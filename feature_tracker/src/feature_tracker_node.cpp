@@ -18,19 +18,22 @@ queue<sensor_msgs::ImageConstPtr> img_buf;
 ros::Publisher pub_img,pub_match;
 ros::Publisher pub_restart;
 
-FeatureTracker trackerData[NUM_OF_CAM];
+FeatureTracker trackerData[NUM_OF_CAM];     //每个相机都有一个FeatureTracker实例，即trackerData[i]
 double first_image_time;
-int pub_count = 1;
-bool first_image_flag = true;  // 用于判断是否是第一帧
-double last_image_time = 0;  // 用于记录上一帧图像的时间
-bool init_pub = 0;  // 用于判断是否发布特征点（因为第一帧没有光流，所以不发布）
+int pub_count = 1;                          // 发布计数
+bool first_image_flag = true;               // 用于判断是否是第一帧（是为true，不是为false）
+double last_image_time = 0;                 // 用于记录上一帧图像的时间
+bool init_pub = 0;                          // 用于判断是否发布特征点（因为第一帧没有光流，所以不发布）
 
 /**
  * @brief       回调函数，对新接收到的图像进行特征点的追踪，发布
- * @note        readImage()函数对新来的图像使用光流法进行特征点跟踪
+ * 
+ * @details     readImage()函数对新来的图像使用光流法进行特征点跟踪
  *              追踪的特征点封装成feature_points发布到pub_img的话题下
  *              图像封装成ptr发布在pub_match下
+ * 
  * @param[in]   img_msg     输入的图像
+ * 
  * @return      void
  */
 void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
@@ -103,10 +106,11 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
     cv::Mat show_img = ptr->image;
     TicToc t_r;
 
-    // ！！！对最新帧进行特征点的提取和光流追踪(img_callback()的核心语句)
+    // 对最新帧进行特征点的提取和光流追踪(img_callback()的核心语句)
     for (int i = 0; i < NUM_OF_CAM; i++)
     {
         ROS_DEBUG("processing camera %d", i);
+        
         // 单目情况下
         if (i != 1 || !STEREO_TRACK)
             // 使用readImage()函数读取图像数据进行处理,进行特征点的提取和光流追踪
@@ -248,10 +252,10 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "feature_tracker");
     ros::NodeHandle n("~");
 
-    // 设置logger的级别，只有级别大于或者等于level的日志消息才会得到处理
+    // 设置logger的级别，只有级别大于或者等于level（这里是Info）的日志消息才会得到处理
     ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
     
-    // 读取yaml中的一些配置参数
+    // 读取yaml配置文件中的一些配置参数
     readParameters(n);
 
     // 读取每个相机实例对应的相机内参
@@ -280,15 +284,17 @@ int main(int argc, char **argv)
     // 发布feature，实例feature_point，跟踪的特征点，给后端优化用
     pub_img = n.advertise<sensor_msgs::PointCloud>("feature", 1000);
 
-    // 发布feature_img,实例ptr,跟踪的特征点图，给RVIZ用和调试用
+    // 发布feature_img，实例ptr，跟踪的特征点图，给RVIZ用和调试用
     pub_match = n.advertise<sensor_msgs::Image>("feature_img",1000);
     
     // 发布restart
     pub_restart = n.advertise<std_msgs::Bool>("restart",1000);
+
     /*
     if (SHOW_TRACK)
         cv::namedWindow("vis", cv::WINDOW_NORMAL);
     */
+
     ros::spin();
     return 0;
 }

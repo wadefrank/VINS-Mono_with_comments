@@ -68,6 +68,7 @@ void FeatureTracker::setMask()
     }
 }
 
+// 将新检测到的特征点n_pts添加到forw_pts中，id初始化-1,track_cnt初始化为1.
 void FeatureTracker::addPoints()
 {
     for (auto &p : n_pts)
@@ -80,15 +81,18 @@ void FeatureTracker::addPoints()
 
 /**
  * @brief       对图像使用光流法进行特征点跟踪
- * @note        createCLAHE() 对图像进行自适应直方图均衡化
- *              calcOpticalFlowPyrLK() LK金字塔光流法
- *              setMask() 对跟踪点进行排序，设置mask
- *              rejectWithF() 通过基本矩阵剔除outliers
- *              goodFeaturesToTrack() 添加特征点(shi-tomasi角点)，确保每帧都有足够的特征点
- *              addPoints()添加新的追踪点
- *              undistortedPoints() 对角点图像坐标去畸变矫正，并计算每个角点的速度
+ * 
+ * @details     createCLAHE()           对图像进行自适应直方图均衡化
+ *              calcOpticalFlowPyrLK()  LK金字塔光流法
+ *              setMask()               对跟踪点进行排序，设置mask
+ *              rejectWithF()           通过基本矩阵剔除outliers
+ *              goodFeaturesToTrack()   添加特征点(shi-tomasi角点)，确保每帧都有足够的特征点
+ *              addPoints()             添加新的追踪点
+ *              undistortedPoints()     对角点图像坐标去畸变矫正，并计算每个角点的速度
+ * 
  * @param[in]   _img 输入图像
  * @param[in]   _cur_time 当前时间（图像时间戳）
+ * 
  * @return      void
 */
 void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time)
@@ -112,14 +116,17 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time)
 
     if (forw_img.empty())
     {
-        //如果当前帧的图像数据forw_img为空，说明当前是第一次读入图像数据
+        // 如果当前帧的图像数据forw_img为空，说明当前是第一次读入图像数据
+        // 将读入的图像赋给当前帧forw_img，同时还赋给prev_img、cur_img
         prev_img = cur_img = forw_img = img;
     }
     else
     {
+        // 否则，说明之前就已经有图像读入，只需要更新当前帧forw_img的数据
         forw_img = img;
     }
-
+    
+    // 此时forw_pts还保存的是上一帧图像中的特征点，所以把它清除
     forw_pts.clear();
 
     if (cur_pts.size() > 0)
@@ -132,6 +139,7 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time)
         // status
         /**
          * @brief       函数cv::calcOpticalFlowPyrLK()实现了LK金字塔光流跟踪的稀疏迭代版本，对前一帧的特征点prevPts进行光流跟踪，得到nextPts     
+         * 
          * @param[in]   prevImg ：buildOpticalFlowPyramid构造的金字塔或第一个8位输入图像
          * @param[in]   nextImg ：与prevImg相同大小和相同类型的金字塔或第二个输入图像
          * @param[in]   prevPts ：需要找到流的2D点的矢量(vector of 2D points for which the flow needs to be found;);点坐标必须是单精度浮点数。
@@ -145,6 +153,7 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time)
                 OPTFLOW_USE_INITIAL_FLOW使用初始估计，存储在nextPts中;如果未设置标志，则将prevPts复制到nextPts并将其视为初始估计。
                 OPTFLOW_LK_GET_MIN_EIGENVALS使用最小特征值作为误差测量（参见minEigThreshold描述）;如果没有设置标志，则将原稿周围的色块和移动点之间的L1距离除以窗口中的像素数，用作误差测量。
          * @param[in]   minEigThreshold ：算法计算光流方程的2x2正常矩阵的最小特征值，除以窗口中的像素数;如果此值小于minEigThreshold，则过滤掉相应的功能并且不处理其流程，因此它允许删除坏点并获得性能提升。
+         * 
          * @return      void
          */
         cv::calcOpticalFlowPyrLK(cur_img, forw_img, cur_pts, forw_pts, status, err, cv::Size(21, 21), 3);
@@ -195,17 +204,21 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time)
                 cout << "mask type wrong " << endl;
             if (mask.size() != forw_img.size())
                 cout << "wrong size " << endl;
+            
+            // 调用cv::goodFeaturesToTrack()
             /** 
-             *void cv::goodFeaturesToTrack(    在mask中不为0的区域检测新的特征点
-             *   InputArray  image,              输入图像
-             *   OutputArray     corners,        存放检测到的角点的vector
-             *   int     maxCorners,             返回的角点的数量的最大值
-             *   double  qualityLevel,           角点质量水平的最低阈值（范围为0到1，质量最高角点的水平为1），小于该阈值的角点被拒绝
-             *   double  minDistance,            返回角点之间欧式距离的最小值
-             *   InputArray  mask = noArray(),   和输入图像具有相同大小，类型必须为CV_8UC1,用来描述图像中感兴趣的区域，只在感兴趣区域中检测角点
-             *   int     blockSize = 3,          计算协方差矩阵时的窗口大小
-             *   bool    useHarrisDetector = false,  指示是否使用Harris角点检测，如不指定则使用shi-tomasi算法
-             *   double  k = 0.04                Harris角点检测需要的k值
+             *
+             * @brief 在mask中不为0的区域检测新的特征点
+             * 
+             * @param[in]  image                (InputArray) 输入图像
+             * @param[in]  corners              (OutputArray) 存放检测到的角点的vector
+             * @param[in]  maxCorners           (int) 返回的角点的数量的最大值
+             * @param[in]  qualityLevel         (double) 角点质量水平的最低阈值（范围为0到1，质量最高角点的水平为1），小于该阈值的角点被拒绝
+             * @param[in]  minDistance          (double) 返回角点之间欧式距离的最小值
+             * @param[in]  mask                 = noArray(), (InputArray) 和输入图像具有相同大小，类型必须为CV_8UC1,用来描述图像中感兴趣的区域，只在感兴趣区域中检测角点
+             * @param[in]  blockSize            = 3, (int) 计算协方差矩阵时的窗口大小
+             * @param[in]  useHarrisDetector    = false, (bool) 指示是否使用Harris角点检测，如不指定则使用shi-tomasi算法
+             * @param[in]  k                    = 0.04 (double) Harris角点检测需要的k值
              *)   
              */
             cv::goodFeaturesToTrack(forw_img, n_pts, MAX_CNT - forw_pts.size(), 0.01, MIN_DIST, mask);
@@ -217,7 +230,7 @@ void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time)
         ROS_DEBUG("add feature begins");
         TicToc t_a;
 
-        // 添将新检测到的特征点n_pts添加到forw_pts中，id初始化-1,track_cnt初始化为1.
+        // 将新检测到的特征点n_pts添加到forw_pts中，id初始化-1,track_cnt初始化为1.
         addPoints();
         ROS_DEBUG("selectFeature costs: %fms", t_a.toc());
     }

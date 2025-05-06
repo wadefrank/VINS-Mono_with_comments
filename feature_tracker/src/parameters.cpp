@@ -4,19 +4,19 @@ std::string IMAGE_TOPIC;
 std::string IMU_TOPIC;
 std::vector<std::string> CAM_NAMES;
 std::string FISHEYE_MASK;
-int MAX_CNT;
-int MIN_DIST;
+int MAX_CNT;                                // 特征点最大个数(default: 150)
+int MIN_DIST;                               // 特征点之间的最小间隔(default: 25)
 int WINDOW_SIZE;
-int FREQ;
+int FREQ;                                   // 控制发布跟踪结果的频率(euroc: 10)
 double F_THRESHOLD;
 int SHOW_TRACK;
 int STEREO_TRACK;
-int EQUALIZE;
-int ROW;
-int COL;
-int FOCAL_LENGTH;
-int FISHEYE;
-bool PUB_THIS_FRAME;
+int EQUALIZE;                               // 如果光太亮或太暗则为1，进行直方图均衡化(default:0)
+int ROW;                                    // 图像宽度
+int COL;                                    // 图像高度
+int FOCAL_LENGTH;                           // 焦距
+int FISHEYE;                                // 是否是鱼眼相机，如果是则为1，否则为0
+bool PUB_THIS_FRAME;                        //是否需要发布特征点
 
 template <typename T>
 T readParam(ros::NodeHandle &n, std::string name)

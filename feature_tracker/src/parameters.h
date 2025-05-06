@@ -2,10 +2,10 @@
 #include <ros/ros.h>
 #include <opencv2/highgui/highgui.hpp>
 
-extern int ROW;             // 图像宽度(default: 640)
-extern int COL;             // 图像高度(default: 480)
-extern int FOCAL_LENGTH;    // 焦距(default: 460)
-const int NUM_OF_CAM = 1;   // 相机的个数(default: 1)
+extern int ROW;                             // 图像宽度(default: 640)
+extern int COL;                             // 图像高度(default: 480)
+extern int FOCAL_LENGTH;                    // 焦距(default: 460)
+const int NUM_OF_CAM = 1;                   // 相机的个数(default: 1)
 
 
 extern std::string IMAGE_TOPIC;             // 图像的ROS TOPIC
