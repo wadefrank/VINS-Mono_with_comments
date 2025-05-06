@@ -34,28 +34,37 @@ double latest_time;     // 最近一次里程计信息对应的IMU时间戳
 
 // IMU项[P, Q, B, Ba, Bg, a, g]
 // 当前里程计信息
-Eigen::Vector3d tmp_P;
-Eigen::Quaterniond tmp_Q;
-Eigen::Vector3d tmp_V;
+Eigen::Vector3d tmp_P;          // 平移（临时量）
+Eigen::Quaterniond tmp_Q;       // 旋转（临时量）
+Eigen::Vector3d tmp_V;          // 速度（临时量）
 
 // 当前里程计信息对应的IMU bias
-Eigen::Vector3d tmp_Ba;
-Eigen::Vector3d tmp_Bg;
+Eigen::Vector3d tmp_Ba;         // IMU加速度计偏置（临时量）
+Eigen::Vector3d tmp_Bg;         // IMU陀螺仪偏置（临时量）
 
 // 当前里程计信息对应的IMU测量值
-Eigen::Vector3d acc_0;
-Eigen::Vector3d gyr_0;
+Eigen::Vector3d acc_0;          // 上一帧IMU加速度测量值
+Eigen::Vector3d gyr_0;          // 上一帧IMU角速度测量值
 
-bool init_feature = 0;  // true:第一次接收图像数据
-bool init_imu = 1;      // true：第一次接收IMU数据
-double last_imu_t = 0;  // 最近一帧IMU数据的时间戳
+bool init_feature = 0;          // 0：第一次接收图像数据
+bool init_imu = 1;              // 1：第一次接收IMU数据
+double last_imu_t = 0;          // 上一帧IMU数据的时间戳（用于判断IMU数据时间是否正常，初始值为-1）
 
-// 从IMU测量值imu_msg和上一个PVQ递推到下一个tmp_Q, tmp_P, tmp_V, 中值积分
+/**
+ * @brief 基于IMU测量数据进行PVQ状态预测（位置、速度、姿态）
+ * 
+ * @details 本函数实现惯性导航的机械编排(Mechanical Alignment)，通过积分IMU的角速度和线加速度数据，
+ *          更新载体的姿态、速度和位置预测值。通常用于组合导航或视觉惯性里程计(VIO)的预测步骤。
+ * 
+ * @param[in] imu_msg IMU消息，包含线加速度和角速度测量值（传感器坐标系下）
+ */
 void predict(const sensor_msgs::ImuConstPtr &imu_msg)
 {
+    // 1.处理IMU时间戳
+    // 获取当前IMU时间戳（转换为秒）
     double t = imu_msg->header.stamp.toSec();
 
-    // init_imu=1表示第一个IMU数据
+    // 记录第一帧IMU时间戳
     if (init_imu)
     {
         latest_time = t;
@@ -63,36 +72,59 @@ void predict(const sensor_msgs::ImuConstPtr &imu_msg)
         return;
     }
 
+    // 计算两次IMU测量的时间间隔（单位：秒）
     double dt = t - latest_time;
+
+    // 更新上一帧IMU数据的时间戳
     latest_time = t;
 
+
+    // 2.提取IMU测量值（传感器坐标系下）
+    // 线加速度（m/s²）
     double dx = imu_msg->linear_acceleration.x;
     double dy = imu_msg->linear_acceleration.y;
     double dz = imu_msg->linear_acceleration.z;
     Eigen::Vector3d linear_acceleration{dx, dy, dz};
 
+    // 角速度（rad/s）
     double rx = imu_msg->angular_velocity.x;
     double ry = imu_msg->angular_velocity.y;
     double rz = imu_msg->angular_velocity.z;
     Eigen::Vector3d angular_velocity{rx, ry, rz};
 
-    Eigen::Vector3d un_acc_0 = tmp_Q * (acc_0 - tmp_Ba) - estimator.g;
 
+    // 3.状态更新
+    // 计算校正后的上一帧IMU加速度
+    Eigen::Vector3d un_acc_0 = tmp_Q * (acc_0 - tmp_Ba) - estimator.g;
+    // 计算校正后的角速度（中值积分）
     Eigen::Vector3d un_gyr = 0.5 * (gyr_0 + angular_velocity) - tmp_Bg;
+
+    // 3.1 姿态更新：q_{k+1} = q_k ⊗ Δq(ω*dt)
     tmp_Q = tmp_Q * Utility::deltaQ(un_gyr * dt);
 
+    // 计算校正后的当前IMU加速度
     Eigen::Vector3d un_acc_1 = tmp_Q * (linear_acceleration - tmp_Ba) - estimator.g;
 
+    // 校正后的加速度中值积分
     Eigen::Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
 
+    // 3.2 位置更新：P_{k+1} = P_k + V_k*dt + 0.5*a*dt²（二阶泰勒展开）
     tmp_P = tmp_P + dt * tmp_V + 0.5 * dt * dt * un_acc;
+
+    // 3.3 速度更新：V_{k+1} = V_k + a*dt
     tmp_V = tmp_V + dt * un_acc;
 
-    acc_0 = linear_acceleration;
-    gyr_0 = angular_velocity;
+
+    // 4.缓存当前IMU测量值用于下一帧计算
+    acc_0 = linear_acceleration;    // 缓存当前加速度
+    gyr_0 = angular_velocity;       // 缓存当前角速度
 }
 
-// 当处理完measurements中的所有数据后，如果VINS系统正常完成滑动窗口优化，那么需要用优化后的结果更新里程计数据
+/**
+ * @brief 从估计器中得到滑动窗口当前图像帧的imu更新项[P,Q,V,ba,bg,a,g]，对imu_buf中剩余的imu_msg进行PVQ递推
+ * 
+ * @note 当处理完measurements中的所有数据后，如果VINS系统正常完成滑动窗口优化，那么需要用优化后的结果更新里程计数据
+ */
 void update()
 {
     TicToc t_predict;
@@ -114,6 +146,16 @@ void update()
 
 }
 
+/**
+ * @brief   对imu和图像数据进行对齐并组合
+ * 
+ * @note    img:    i -------- j  -  -------- k
+ *          imu:    - jjjjjjjj - j/k kkkkkkkk -  
+ *          直到把缓存中的图像特征数据或者IMU数据取完，才能够跳出此函数，并返回数据
+ * 
+ *           
+ * @return  vector<std::pair<vector<ImuConstPtr>, PointCloudConstPtr>> (IMUs, img_msg)s
+*/
 std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointCloudConstPtr>>
 getMeasurements()
 {
@@ -164,8 +206,15 @@ getMeasurements()
 }
 
 /**
- * @brief       IMU的回调函数
- * @note        每接收到一个imu_msg就计算一次PVQ，并且封装成里程计信息发布
+ * @brief       IMU的回调函数，每接收到一个imu_msg就计算一次PVQ，并且封装成里程计信息发布
+ * 
+ * @details     订阅IMU数据，每订阅到一个IMU数据：
+ *                  1.将IMU数据存入IMU数据缓存队列imu_buf
+ *                  2.进行一次中值积分，计算在wolrd坐标系下的PVQ
+ *                  3.并封装成Odometry信息发布
+ * 
+ * @param[in]   imu_msg
+ * 
  * @return      void
  */
 void imu_callback(const sensor_msgs::ImuConstPtr &imu_msg)
@@ -200,7 +249,11 @@ void imu_callback(const sensor_msgs::ImuConstPtr &imu_msg)
     }
 }
 
-
+/**
+ * @brief  图像特征回调函数，每订阅到一个图像帧，将图像特征点数据存入图像特征点数据缓存队列feature_buf
+ * 
+ * @param[in] feature_msg 
+ */
 void feature_callback(const sensor_msgs::PointCloudConstPtr &feature_msg)
 {
     if (!init_feature)
@@ -217,6 +270,11 @@ void feature_callback(const sensor_msgs::PointCloudConstPtr &feature_msg)
     con.notify_one(); // 唤醒getMeasurements()读取缓存imu_buf和feature_buf中的观测数据
 }
 
+/**
+ * @brief 判断是否重启estimator
+ * 
+ * @param restart_msg 
+ */
 void restart_callback(const std_msgs::BoolConstPtr &restart_msg)
 {
     if (restart_msg->data == true)
@@ -238,6 +296,11 @@ void restart_callback(const std_msgs::BoolConstPtr &restart_msg)
     return;
 }
 
+/**
+ * @brief 根据回环检测信息进行重定位
+ * 
+ * @param[in] points_msg 
+ */
 void relocalization_callback(const sensor_msgs::PointCloudConstPtr &points_msg)
 {
     //printf("relocalization callback! \n");
@@ -249,10 +312,12 @@ void relocalization_callback(const sensor_msgs::PointCloudConstPtr &points_msg)
 // thread: visual-inertial odometry
 /**
  * @brief       VIO后端，包括IMU预积分、松耦合初始化和local BA
+ * 
  * @note        1.等待并且获取measurements：（IMUs, img_msg）s，计算dt
  *              2.estimator.processIMU() 进行IMU预积分
- *              estimator.setReloFrame() 设置重定位帧
- *              estimator.setprocessImage() 处理图像帧：初始化，紧耦合的非线性优化
+ *              3.estimator.setReloFrame() 设置重定位帧
+ *              4.estimator.setprocessImage() 处理图像帧：初始化，紧耦合的非线性优化
+ * 
  * @return      void
  */
 void process()
@@ -424,11 +489,21 @@ void process()
 
 int main(int argc, char **argv)
 {
+    // ROS初始化
     ros::init(argc, argv, "vins_estimator");
+
+    // 设置句柄
     ros::NodeHandle n("~");
+    
+    // 设置logger的级别，只有级别大于或者等于level（这里是Info）的日志消息才会得到处理
     ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
+
+    // 读取yaml配置文件中的一些配置参数
     readParameters(n);
+
+    // 设置估计器参数
     estimator.setParameter();
+
 #ifdef EIGEN_DONT_PARALLELIZE
     ROS_DEBUG("EIGEN_DONT_PARALLELIZE");
 #endif
@@ -437,13 +512,10 @@ int main(int argc, char **argv)
     // rviz相关话题
     registerPub(n);  // 注册visualization.cpp中创建的发布器
 
-    // 订阅IMU数据，每订阅到一个IMU数据：
-    //      1.将IMU数据存入IMU数据缓存队列imu_buf
-    //      2.进行一次中值积分，计算在wolrd坐标系下的PVQ
-    //      3.并封装成Odometry信息发布
+    // 订阅IMU数据
     ros::Subscriber sub_imu = n.subscribe(IMU_TOPIC, 2000, imu_callback, ros::TransportHints().tcpNoDelay());
 
-    // 订阅图像特征点数据,每订阅到一个图像帧，将图像特征点数据存入图像特征点数据缓存队列feature_buf
+    // 订阅图像特征点数据
     ros::Subscriber sub_image = n.subscribe("/feature_tracker/feature", 2000, feature_callback);
 
     // 判断是否重启estimator

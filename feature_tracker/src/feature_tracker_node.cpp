@@ -250,6 +250,8 @@ int main(int argc, char **argv)
 {
     // ros初始化和设置句柄
     ros::init(argc, argv, "feature_tracker");
+
+    // 设置句柄
     ros::NodeHandle n("~");
 
     // 设置logger的级别，只有级别大于或者等于level（这里是Info）的日志消息才会得到处理
