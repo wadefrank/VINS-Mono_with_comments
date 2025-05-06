@@ -1,7 +1,7 @@
 #include "parameters.h"
 
 double INIT_DEPTH;
-double MIN_PARALLAX;
+double MIN_PARALLAX;  // 最小视差阈值
 double ACC_N, ACC_W;
 double GYR_N, GYR_W;
 
