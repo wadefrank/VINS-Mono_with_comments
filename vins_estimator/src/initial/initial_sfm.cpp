@@ -114,6 +114,22 @@ void GlobalSFM::triangulateTwoFrames(int frame0, Eigen::Matrix<double, 3, 4> &Po
 //  c_translation cam_R_w
 // relative_q[i][j]  j_q_i
 // relative_t[i][j]  j_t_ji  (j < i)
+
+/**
+ * @brief 纯视觉sfm，求解窗口中的所有图像帧的位姿和特征点坐标
+ * 
+ * @param frame_num 			窗口总帧数（frame_count + 1）
+ * @param q 					窗口内图像帧的旋转四元数q（相对于第l帧）
+ * @param T 					窗口内图像帧的平移向量T（相对于第l帧）
+ * @param l 					第l帧
+ * @param relative_R 			当前帧到第l帧的旋转矩阵
+ * @param relative_T 			当前帧到第l帧的平移向量
+ * @param sfm_f 				所有特征点
+ * @param sfm_tracked_points 	所有在sfm中三角化的特征点（路标点）的ID和3D坐标
+ * 
+ * @return true 				sfm求解成功
+ * @return false 
+ */
 bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 			  const Matrix3d relative_R, const Vector3d relative_T,
 			  vector<SFMFeature> &sfm_f, map<int, Vector3d> &sfm_tracked_points)

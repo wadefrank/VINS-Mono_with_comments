@@ -439,20 +439,32 @@ void process()
 
             TicToc t_s;
 
-            // 建立每个特征点的(camera_id,[x,y,z,u,v,vx,vy])s的map，索引为feature_id
+            // image为字典，用来存储单帧所有特征点的信息，键为feature_id，值为vector<pair<camera_id,[x,y,z,u,v,vx,vy]>>
+            // 推测：采用上述结构表示可能是因为一个特征点可能在多个相机中出现（双目），但是在VINS-Mono中camera_id=0
             map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> image;
             for (unsigned int i = 0; i < img_msg->points.size(); i++)
             {
+                // v表示特征点id（+0.5表示四舍五入）
                 int v = img_msg->channels[0].values[i] + 0.5;
+
+                // 特征点id计算方式： id_of_point = p_id * NUM_OF_CAM + i
                 int feature_id = v / NUM_OF_CAM;
                 int camera_id = v % NUM_OF_CAM;
+
+                // points[i]表示特征点在归一化相机坐标系下的坐标（z=1）
                 double x = img_msg->points[i].x;
                 double y = img_msg->points[i].y;
                 double z = img_msg->points[i].z;
+
+                // p_u和p_v分别表示特征点的像素坐标x,y
                 double p_u = img_msg->channels[1].values[i];
                 double p_v = img_msg->channels[2].values[i];
+
+                // velocity_x和velocity_y分别表示特征点沿x,y方向的像素移动速度
                 double velocity_x = img_msg->channels[3].values[i];
                 double velocity_y = img_msg->channels[4].values[i];
+
+
                 ROS_ASSERT(z == 1);
                 Eigen::Matrix<double, 7, 1> xyz_uv_velocity;
                 xyz_uv_velocity << x, y, z, p_u, p_v, velocity_x, velocity_y;

@@ -62,16 +62,16 @@ class FeatureTracker
 
     vector<cv::Point2f> prev_pts, cur_pts, forw_pts;
 
-    vector<cv::Point2f> prev_un_pts, cur_un_pts;  // 归一化相机坐标系下的坐标
+    vector<cv::Point2f> prev_un_pts, cur_un_pts;  // 畸变矫正之后的所有归一化特征点的坐标(x,y)
 
-    vector<cv::Point2f> pts_velocity;  // 当前帧相对前一帧特征点沿x,y方向的像素移动速度
+    vector<cv::Point2f> pts_velocity;             // cur_un_pts中对应的归一化特征点沿x,y方向的像素移动速度（相对于prev_un_pts）
 
-    vector<int> ids;  // 能够被跟踪到的特征点的id
+    vector<int> ids;                              // 能够被跟踪到的特征点的id
 
-    vector<int> track_cnt;  // 当前帧forw_img中每个特征点被追踪的时间次数
+    vector<int> track_cnt;                        // 当前帧forw_img中每个特征点被追踪的时间次数
 
-    map<int, cv::Point2f> cur_un_pts_map;
-    map<int, cv::Point2f> prev_un_pts_map;
+    map<int, cv::Point2f> cur_un_pts_map;         // （当前帧）畸变矫正之后的所有归一化特征点的id+坐标 {id: (x,y)}
+    map<int, cv::Point2f> prev_un_pts_map;        // （上一帧）畸变矫正之后的所有归一化特征点的id+坐标 {id: (x,y)}
 
     camodocal::CameraPtr m_camera;  // 相机模型
 

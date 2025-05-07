@@ -1,5 +1,6 @@
 #include "feature_tracker.h"
 
+// n_id是FeatureTracker类的​静态成员变量，所有FeatureTracker类的对象共享该成员变量
 int FeatureTracker::n_id = 0;
 
 bool inBorder(const cv::Point2f &pt)
@@ -349,6 +350,15 @@ void FeatureTracker::showUndistortion(const string &name)
     cv::waitKey(0);
 }
 
+/**
+ * @brief 对角点图像坐标进行去畸变矫正，转换到归一化坐标系上，并计算每个角点的速度。
+ * 
+ * @details     cur_un_pts      畸变矫正之后的所有归一化特征点坐标 (x,y)
+ *              cur_un_pts_map  畸变矫正之后的所有归一化特征点的id+坐标 {id: (x,y)}
+ *              pts_velocity    cur_un_pts中对应的归一化特征点沿x,y方向的像素移动速度
+ * 
+ * @return void
+ */
 void FeatureTracker::undistortedPoints()
 {
     cur_un_pts.clear();
@@ -363,7 +373,9 @@ void FeatureTracker::undistortedPoints()
         cur_un_pts_map.insert(make_pair(ids[i], cv::Point2f(b.x() / b.z(), b.y() / b.z())));
         //printf("cur pts id %d %f %f", ids[i], cur_un_pts[i].x, cur_un_pts[i].y);
     }
+
     // caculate points velocity
+    // 计算归一化特征点沿x,y方向的像素移动速度
     if (!prev_un_pts_map.empty())
     {
         double dt = cur_time - prev_time;

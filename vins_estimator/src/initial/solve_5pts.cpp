@@ -189,7 +189,17 @@ namespace cv {
     }
 }
 
-
+/**
+ * @brief 通过求解本质矩阵得到R,t
+ * @details  findFundamentalMat()采用RANSAC算法求解本质矩阵E
+ *           recoverPose()通过本质矩阵得到R和t
+ * 
+ * @param corres        两帧共同观测到的特征点对
+ * @param Rotation      当前帧到参考帧的旋转矩阵
+ * @param Translation   当前帧到参考帧的平移向量
+ * @return true         内点数大于12
+ * @return false        内点数小于等于12
+ */
 bool MotionEstimator::solveRelativeRT(const vector<pair<Vector3d, Vector3d>> &corres, Matrix3d &Rotation, Vector3d &Translation)
 {
     if (corres.size() >= 15)
@@ -201,9 +211,35 @@ bool MotionEstimator::solveRelativeRT(const vector<pair<Vector3d, Vector3d>> &co
             rr.push_back(cv::Point2f(corres[i].second(0), corres[i].second(1)));
         }
         cv::Mat mask;
+
+        /**
+         * @brief 通过RANSAC算法求解两幅图像之间的本质矩阵E
+         * 
+         * @note 注意这里也有一个写死的参数460（FOCAL_LENGTH）
+         * 
+         * @param     nputArray  points1,             第一幅图像点的数组
+         * @param     InputArray  points2,            第二幅图像点的数组
+         * @param     int     method = FM_RANSAC,     RANSAC 算法
+         * @param     double  param1 = 3.,            点到对极线的最大距离，超过这个值的点将被舍弃
+         * @param     double  param2 = 0.99,          矩阵正确的可信度
+         * @param     OutputArray mask = noArray()    在计算过程中没有被舍弃的点
+         *
+        */
         cv::Mat E = cv::findFundamentalMat(ll, rr, cv::FM_RANSAC, 0.3 / 460, 0.99, mask);
         cv::Mat cameraMatrix = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
         cv::Mat rot, trans;
+        
+        /**
+         * @brief 通过本质矩阵得到Rt，返回通过手性校验的内点个数
+         * @param     InputArray  E,              本质矩阵
+         * @param     InputArray  points1,        第一幅图像点的数组
+         * @param     InputArray  points2,        第二幅图像点的数组
+         * @param     InputArray  cameraMatrix,   相机内参
+         * @param     OutputArray     R,          第一帧坐标系到第二帧坐标系的旋转矩阵
+         * @param     OutputArray     t,          第一帧坐标系到第二帧坐标系的平移向量
+         * @param     InputOutputArray    mask = noArray()  在findFundamentalMat()中没有被舍弃的点
+         *
+        */
         int inlier_cnt = cv::recoverPose(E, ll, rr, cameraMatrix, rot, trans, mask);
         //cout << "inlier_cnt " << inlier_cnt << endl;
 

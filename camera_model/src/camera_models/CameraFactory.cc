@@ -86,6 +86,12 @@ CameraFactory::generateCamera(Camera::ModelType modelType,
     }
 }
 
+/**
+ * @brief 
+ * 
+ * @param filename 
+ * @return CameraPtr 
+ */
 CameraPtr
 CameraFactory::generateCameraFromYamlFile(const std::string& filename)
 {
@@ -102,6 +108,8 @@ CameraFactory::generateCameraFromYamlFile(const std::string& filename)
         std::string sModelType;
         fs["model_type"] >> sModelType;
 
+        // bool boost::iequals(const std::string& str1, const std::string& str2);
+        // 用于不区分大小写的字符串比较
         if (boost::iequals(sModelType, "kannala_brandt"))
         {
             modelType = Camera::KANNALA_BRANDT;

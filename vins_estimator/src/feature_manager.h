@@ -17,7 +17,10 @@ using namespace Eigen;
 
 // 参考博客：https://blog.csdn.net/liuzheng1/article/details/90052050
 
-// 一个路标点在某一图像帧上的信息
+/**
+ * @brief 单帧中一个特征点的属性
+ * 
+ */
 class FeaturePerFrame
 {
   public:
@@ -33,7 +36,7 @@ class FeaturePerFrame
         cur_td = td;
     }
     double cur_td;
-    Vector3d point;     // 路标点点空间坐标
+    Vector3d point;     // 路标点点空间坐标（归一化）
     Vector2d uv;        // 路标点映射到该帧上的图像坐标
     Vector2d velocity;  // 路标点的跟踪速度
     double z;
@@ -44,21 +47,26 @@ class FeaturePerFrame
     double dep_gradient;
 };
 
-// 一个路标点所有信息（每个路标点可以由多个连续的图像观测到）
+
+/**
+ * @brief 管理一个特征点（每个特征点可以由多帧连续图像观测到）
+ * 
+ */
 class FeaturePerId
 {
   public:
-    const int feature_id;  // 路标点id
-    int start_frame;       // 第一次出现该路标点的图像帧号
-    vector<FeaturePerFrame> feature_per_frame;  // 包含该路标点的所有图像帧
+    const int feature_id;                       // 特征点id
+    int start_frame;                            // 第一次出现该特征点的图像帧号（在滑动窗口中）
+    vector<FeaturePerFrame> feature_per_frame;  // 管理对应帧该特征点的属性
 
-    int used_num;  // 该路标点出现的次数
-    bool is_outlier;  // 是否是外点
-    bool is_margin;
-    double estimated_depth;  // 逆深度
-    int solve_flag; // 0 haven't solve yet; 1 solve succ; 2 solve fail; 该特征点的状态，是否被三角化
+    int used_num;                               // 该特征点出现的次数
+    bool is_outlier;                            // 是否是外点
+    bool is_margin;                             // 是否需要边缘化
+    double estimated_depth;                     // 逆深度
+    int solve_flag;                             // 0 haven't solve yet; 1 solve succ; 2 solve fail; 该特征点的状态，是否被三角化
 
     Vector3d gt_p;
+
     // 构造函数：以feature_id为索引，并保存了出现该路标点的第一帧的id
     FeaturePerId(int _feature_id, int _start_frame)
         : feature_id(_feature_id), start_frame(_start_frame),
@@ -66,11 +74,15 @@ class FeaturePerId
     {
     }
     
-    // 得到该路标点最后一次跟踪到的帧号
+    // 返回该特征点最后一次跟踪到的帧号（在滑动窗口中）
     int endFrame();
 };
 
-// 管理滑动窗口内所有路标点
+
+/**
+ * @brief 管理滑动窗口中所有特征点
+ * 
+ */
 class FeatureManager
 {
   public:
@@ -96,8 +108,8 @@ class FeatureManager
     void removeBack();
     void removeFront(int frame_count);
     void removeOutlier();
-    list<FeaturePerId> feature;  // 包含滑动窗口内所有的路标点的链表
-    int last_track_num;
+    list<FeaturePerId> feature;   // 包含滑动窗口内所有的特征点的链表
+    int last_track_num;           // 被多帧图像跟踪的特征点的个数
 
   private:
     double compensatedParallax2(const FeaturePerId &it_per_id, int frame_count);

@@ -424,21 +424,32 @@ EquidistantCamera::liftSphere(const Eigen::Vector2d& p, Eigen::Vector3d& P) cons
  * \param p image coordinates
  * \param P coordinates of the projective ray
  */
+
+/**
+ * @brief 将图像平面上的点反投影到三维投影射线（去畸变+球面坐标映射）
+ * 
+ * @param p     图像坐标系中的像素坐标（可能含畸变）
+ * @param P     输出的三维投影射线坐标（归一化方向向量）
+ */
 void
 EquidistantCamera::liftProjective(const Eigen::Vector2d& p, Eigen::Vector3d& P) const
 {
     // Lift points to normalised plane
+    // 步骤1：通过内参逆矩阵将像素坐标转换到归一化平面（去内参影响）
     Eigen::Vector2d p_u;
     p_u << m_inv_K11 * p(0) + m_inv_K13,
            m_inv_K22 * p(1) + m_inv_K23;
 
     // Obtain a projective ray
-    double theta, phi;
-    backprojectSymmetric(p_u, theta, phi);
+    // 步骤2：通过对称投影模型反算球面角坐标
+    double theta, phi;                          // theta：天顶角（与光轴夹角），phi：方位角
+    backprojectSymmetric(p_u, theta, phi);      // 该函数实现等距投影模型的反向映射，将归一化平面坐标转换为球面角坐标[3](@ref)
 
+    // 步骤3：将球面坐标转换为笛卡尔坐标系下的三维射线
     P(0) = sin(theta) * cos(phi);
     P(1) = sin(theta) * sin(phi);
     P(2) = cos(theta);
+    // 该转换符合球坐标系到笛卡尔坐标系的数学定义[5](@ref)
 }
 
 /** 
@@ -712,93 +723,110 @@ EquidistantCamera::fitOddPoly(const std::vector<double>& x, const std::vector<do
     }
 }
 
+/**
+ * @brief 将归一化平面坐标反投影到球面坐标系（核心畸变模型反向计算）
+ * 
+ * @param p_u       归一化平面坐标（已去内参影响的去畸变坐标）
+ * @param theta     输出的天顶角（与光轴的夹角，弧度）
+ * @param phi       输出的方位角（绕光轴的旋转角，弧度）
+ */
 void
 EquidistantCamera::backprojectSymmetric(const Eigen::Vector2d& p_u,
                                         double& theta, double& phi) const
 {
-    double tol = 1e-10;
-    double p_u_norm = p_u.norm();
+    double tol = 1e-10;             // 数值计算容差阈值
+    double p_u_norm = p_u.norm();   // 计算归一化坐标的模长（r = sqrt(x^2 + y^2)）
 
+    // 计算方位角phi（处理坐标原点附近的情况）
     if (p_u_norm < 1e-10)
     {
-        phi = 0.0;
+        phi = 0.0;                      // 靠近原点时方位角无定义，设为0
     }
     else
     {
-        phi = atan2(p_u(1), p_u(0));
+        phi = atan2(p_u(1), p_u(0));    // 标准方位角计算（注意atan2参数顺序为(y,x)）
     }
 
-    int npow = 9;
+    // 根据畸变系数确定多项式最高次数（等距模型的多项式形式为 theta + k2*theta^3 + k3*theta^5 + ... = r）
+    int npow = 9;                       // 初始为9次多项式（假设k2~k5均非零）
     if (mParameters.k5() == 0.0)
     {
-        npow -= 2;
+        npow -= 2;                      // 若k5=0，降为7次
     }
     if (mParameters.k4() == 0.0)
     {
-        npow -= 2;
+        npow -= 2;                      // 若k4=0，降为5次
     }
     if (mParameters.k3() == 0.0)
     {
-        npow -= 2;
+        npow -= 2;                      // 若k3=0，降为3次
     }
     if (mParameters.k2() == 0.0)
     {
-        npow -= 2;
+        npow -= 2;                      // 若k2=0，降为1次
     }
 
+    // 构建多项式系数向量：coeffs[0] + coeffs[1]*x + ... + coeffs[npow]*x^npow = 0
     Eigen::MatrixXd coeffs(npow + 1, 1);
     coeffs.setZero();
-    coeffs(0) = -p_u_norm;
-    coeffs(1) = 1.0;
+    coeffs(0) = -p_u_norm;              // -r项（移项后的常数项）
+    coeffs(1) = 1.0;                    // theta项（一次项系数）
 
+    // 根据实际多项式次数填充畸变系数（等距模型的奇次幂形式）
     if (npow >= 3)
     {
-        coeffs(3) = mParameters.k2();
+        coeffs(3) = mParameters.k2();   // theta^3项系数为k2
     }
     if (npow >= 5)
     {
-        coeffs(5) = mParameters.k3();
+        coeffs(5) = mParameters.k3();   // theta^5项系数为k3
     }
     if (npow >= 7)
     {
-        coeffs(7) = mParameters.k4();
+        coeffs(7) = mParameters.k4();   // theta^7项系数为k4
     }
     if (npow >= 9)
     {
-        coeffs(9) = mParameters.k5();
+        coeffs(9) = mParameters.k5();   // theta^9项系数为k5
     }
 
-    if (npow == 1)
+    // 解多项式方程求theta
+    if (npow == 1)                      // 无畸变情况直接求解
     {
-        theta = p_u_norm;
+        theta = p_u_norm;               // theta = r
     }
     else
     {
         // Get eigenvalues of companion matrix corresponding to polynomial.
         // Eigenvalues correspond to roots of polynomial.
+        // 构造伴随矩阵（Companion Matrix）求解多项式根[4,6](@ref)
         Eigen::MatrixXd A(npow, npow);
         A.setZero();
+        
+        // 伴随矩阵结构：下三角为单位矩阵，最后一列为系数缩放
         A.block(1, 0, npow - 1, npow - 1).setIdentity();
         A.col(npow - 1) = - coeffs.block(0, 0, npow, 1) / coeffs(npow);
 
+        // 计算伴随矩阵的特征值（特征值对应多项式根）[4](@ref)
         Eigen::EigenSolver<Eigen::MatrixXd> es(A);
         Eigen::MatrixXcd eigval = es.eigenvalues();
 
+        // 筛选符合条件的实根
         std::vector<double> thetas;
         for (int i = 0; i < eigval.rows(); ++i)
         {
-            if (fabs(eigval(i).imag()) > tol)
+            if (fabs(eigval(i).imag()) > tol)   // 忽略虚部过大的解
             {
                 continue;
             }
 
             double t = eigval(i).real();
 
-            if (t < -tol)
+            if (t < -tol)                       // 排除负根
             {
                 continue;
             }
-            else if (t < 0.0)
+            else if (t < 0.0)                   // 将接近0的负数归零
             {
                 t = 0.0;
             }
@@ -806,6 +834,7 @@ EquidistantCamera::backprojectSymmetric(const Eigen::Vector2d& p_u,
             thetas.push_back(t);
         }
 
+        // 选择最小正实根（物理意义：选择最接近光轴方向的解）
         if (thetas.empty())
         {
             theta = p_u_norm;

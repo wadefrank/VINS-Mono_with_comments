@@ -1,7 +1,7 @@
 #include "parameters.h"
 
 double INIT_DEPTH;
-double MIN_PARALLAX;  // 最小视差阈值
+double MIN_PARALLAX;  // 最小视差阈值，大于该阈值，则判定次新帧为关键帧
 double ACC_N, ACC_W;
 double GYR_N, GYR_W;
 
